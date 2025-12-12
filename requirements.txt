@@ -1,6 +1,7 @@
 insightface==0.7.3
 opencv-python
 numpy
-onnxruntime-gpu
+onnxruntime
 streamlit
 Pillow
+
