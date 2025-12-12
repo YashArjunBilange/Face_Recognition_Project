@@ -22,7 +22,7 @@ st.set_page_config(page_title="Face Recognition — Streamlit", layout="wide")
 @st.cache_resource(show_spinner=False)
 def get_engine():
     # load a CPU-friendly model
-    engine = FaceEngine(ctx_id=-1, model_name="antelopev2")
+    engine = FaceEngine(ctx_id=-1, model_name="buffalo_l")
     return engine
 
 @st.cache_resource(show_spinner=False)
@@ -228,3 +228,4 @@ elif mode == "Manage Dataset":
 # Footer
 st.markdown("---")
 st.caption("Tip: first add persons using 'Add Person' then use 'Live Webcam' or 'Recognize (Image)' to test.")
+
