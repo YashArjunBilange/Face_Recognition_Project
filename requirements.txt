@@ -1,8 +1,9 @@
 streamlit
 opencv-python-headless==4.8.1.78
 insightface==0.7.3
-onnxruntime==1.20.0
+onnxruntime==1.16.3
 numpy==1.26.4
 Pillow
+onnx==1.14.0
 
 
