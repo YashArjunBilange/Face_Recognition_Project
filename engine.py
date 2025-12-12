@@ -3,7 +3,7 @@ import numpy as np
 from insightface.app import FaceAnalysis
 
 class FaceEngine:
-    def __init__(self, ctx_id=-1, model_name="antelopev2"):
+    def __init__(self, ctx_id=-1, model_name="buffalo_l"):
         # Use a lightweight CPU-friendly model and force CPU provider
         # FaceAnalysis will download model files on first run
         self.app = FaceAnalysis(name=model_name, providers=['CPUExecutionProvider'])
@@ -36,3 +36,4 @@ class FaceEngine:
         if not faces:
             return None
         return self.get_embedding_from_faceobj(faces[0])
+
