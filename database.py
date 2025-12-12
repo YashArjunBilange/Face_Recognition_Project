@@ -1,63 +1,57 @@
-# database.py
 import os
 import numpy as np
 from pathlib import Path
-import shutil
-
-DATASET_DIR = Path("dataset")
+from PIL import Image
 
 class FaceDatabase:
-    def __init__(self, engine):
-        """
-        engine: FaceEngine instance (for computing embeddings on captured images)
-        """
+    def __init__(self, engine, db_path="faces"):
         self.engine = engine
-        DATASET_DIR.mkdir(exist_ok=True)
+        self.db_path = Path(db_path)
+        self.db_path.mkdir(parents=True, exist_ok=True)
 
-    def add_person(self, name, embeddings):
-        person_dir = DATASET_DIR / name
-        person_dir.mkdir(parents=True, exist_ok=True)
+    def person_file(self, name):
+        return str(self.db_path / f"{name}.npy")
 
-        emb_list = []
-        for i, emb in enumerate(embeddings, start=1):
-            emb = np.asarray(emb, dtype=np.float32)
-            n = np.linalg.norm(emb)
-            if n > 0:
-                emb = emb / n
-            emb_list.append(emb)
+    def image_folder(self, name):
+        p = self.db_path / name
+        p.mkdir(exist_ok=True)
+        return str(p)
 
-        if len(emb_list) == 0:
-            shutil.rmtree(person_dir)
-            raise ValueError("No valid embeddings")
-
-        avg = np.mean(np.vstack(emb_list), axis=0)
-        avg = avg / np.linalg.norm(avg)
-        np.save(person_dir / "embedding.npy", avg)
-        print(f"[db] saved {name} with {len(emb_list)} embeddings")
-
-    def load_all_embeddings(self):
+    def add_person(self, name, embeddings, raw_images=None):
         """
-        Returns dict name -> embedding (normalized)
+        embeddings: list/array of embeddings (already normalized)
+        raw_images: optional list of BGR images to save
         """
-        data = {}
-        for p in DATASET_DIR.iterdir():
-            if p.is_dir():
-                emb_file = p / "embedding.npy"
-                if emb_file.exists():
-                    emb = np.load(emb_file)
-                    # ensure normalized
-                    n = np.linalg.norm(emb)
-                    if n>0:
-                        emb = emb / n
-                    data[p.name] = emb
-        return data
+        emb = np.array(embeddings, dtype=np.float32)
+        # store the mean embedding as the canonical embedding
+        mean_emb = emb.mean(axis=0)
+        mean_emb = mean_emb / (np.linalg.norm(mean_emb) + 1e-9)
+        np.save(self.person_file(name), mean_emb)
+
+        if raw_images:
+            folder = Path(self.image_folder(name))
+            for i, img in enumerate(raw_images):
+                # img is expected to be BGR numpy array
+                im = Image.fromarray(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
+                im.save(folder / f"{i+1}.jpg")
 
     def list_people(self):
-        return sorted([p.name for p in DATASET_DIR.iterdir() if p.is_dir()])
+        return sorted([p.stem for p in self.db_path.glob("*.npy")])
 
     def delete_person(self, name):
-        p = DATASET_DIR / name
-        if p.exists() and p.is_dir():
-            shutil.rmtree(p)
-            return True
-        return False
+        f = Path(self.person_file(name))
+        if f.exists():
+            f.unlink()
+        folder = self.db_path / name
+        if folder.exists() and folder.is_dir():
+            for item in folder.iterdir():
+                item.unlink()
+            folder.rmdir()
+
+    def load_all_embeddings(self):
+        data = {}
+        for p in self.db_path.glob("*.npy"):
+            emb = np.load(str(p))
+            emb = emb / (np.linalg.norm(emb) + 1e-9)
+            data[p.stem] = emb
+        return data
