@@ -57,7 +57,7 @@ with st.sidebar:
     st.write("Threshold (cosine similarity)")
     thresh = st.slider("Similarity threshold", 0.0, 1.0, THRESHOLD, 0.01)
     st.write("Model:")
-    st.text("antelopev2 (CPU)")
+    st.text("Insightface(buffalo_l) [GPU]")
 
 # ---------- MODE: Recognize (Image) ----------
 if mode == "Recognize (Image)":
@@ -228,4 +228,5 @@ elif mode == "Manage Dataset":
 # Footer
 st.markdown("---")
 st.caption("Tip: first add persons using 'Add Person' then use 'Live Webcam' or 'Recognize (Image)' to test.")
+
 
