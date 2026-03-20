@@ -1,14 +1,17 @@
 import streamlit as st
+
+st.set_page_config(page_title="Face Recognition — Streamlit", layout="wide")
+
+import os
+os.environ["OPENCV_VIDEOIO_PRIORITY_MSMF"] = "0"
+
 from PIL import Image
 import numpy as np
 import cv2
 from engine import FaceEngine
 from database import FaceDatabase
-import os
 import io
 import time
-
-st.set_page_config(page_title="Face Recognition — Streamlit", layout="wide")
 
 # at top of app.py after imports
 if os.path.exists("ui.css"):
