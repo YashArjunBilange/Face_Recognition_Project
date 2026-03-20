@@ -1,19 +1,14 @@
 import streamlit as st
-
 st.set_page_config(page_title="Face Recognition — Streamlit", layout="wide")
 
 import os
-os.environ["OPENCV_VIDEOIO_PRIORITY_MSMF"] = "0"
-
-from PIL import Image
+from PIL import Image, ImageDraw
 import numpy as np
-import cv2
 from engine import FaceEngine
 from database import FaceDatabase
 import io
-import time
 
-# at top of app.py after imports
+# ---------- Load CSS ----------
 if os.path.exists("ui.css"):
     with open("ui.css") as f:
         st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
@@ -22,12 +17,10 @@ if os.path.exists("ui.css"):
 THRESHOLD = 0.30
 DB_FOLDER = "faces"
 
-# ---------- Helpers & Cached resources ----------
+# ---------- Helpers ----------
 @st.cache_resource(show_spinner=False)
 def get_engine():
-    # load a CPU-friendly model
-    engine = FaceEngine(ctx_id=-1, model_name="buffalo_l")
-    return engine
+    return FaceEngine(ctx_id=-1, model_name="buffalo_l")
 
 @st.cache_resource(show_spinner=False)
 def get_db():
@@ -35,202 +28,161 @@ def get_db():
 
 def normalize_emb(v):
     v = np.asarray(v, dtype=np.float32)
-    n = np.linalg.norm(v) + 1e-9
-    return v / n
+    return v / (np.linalg.norm(v) + 1e-9)
 
 def draw_bbox_and_label(img_bgr, face_obj, label):
-    x1, y1, x2, y2 = face_obj.bbox.astype(int)
-    cv2.rectangle(img_bgr, (x1, y1), (x2, y2), (0, 200, 0), 3)
-    cv2.putText(img_bgr, label, (x1, y1 - 10),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 200, 0), 2)
+    img_rgb = img_bgr[:, :, ::-1]
+    img_pil = Image.fromarray(img_rgb)
+    draw = ImageDraw.Draw(img_pil)
+
+    x1, y1, x2, y2 = map(int, face_obj.bbox)
+    draw.rectangle([x1, y1, x2, y2], outline="green", width=3)
+    draw.text((x1, y1 - 10), label, fill="green")
+
+    return np.array(img_pil)[:, :, ::-1]
 
 # ---------- Init ----------
 engine = get_engine()
 db = get_db()
 
-# Top UI
-st.markdown("<style> .stApp { background-color: #0b0f13;} </style>", unsafe_allow_html=True)
+# ---------- UI ----------
 st.title("🔵 Face Recognition System")
 st.caption("Upload an image or use your webcam. (Powered by InsightFace)")
 
-# Layout: sidebar for controls, main for actions
 with st.sidebar:
     st.header("Controls")
     mode = st.radio("Mode", ["Recognize (Image)", "Live Webcam", "Add Person", "Manage Dataset"])
     st.markdown("---")
-    st.write("Threshold (cosine similarity)")
     thresh = st.slider("Similarity threshold", 0.0, 1.0, THRESHOLD, 0.01)
-    st.write("Model:")
-    st.text("Insightface(buffalo_l) [GPU]")
+    st.text("Model: InsightFace (buffalo_l)")
 
-# ---------- MODE: Recognize (Image) ----------
+# ---------- MODE: Recognize ----------
 if mode == "Recognize (Image)":
     st.subheader("🔍 Recognize from uploaded image")
-    uploaded = st.file_uploader("Upload one image", type=["jpg", "jpeg", "png"])
-    if uploaded is not None:
+    uploaded = st.file_uploader("Upload image", type=["jpg", "jpeg", "png"])
+
+    if uploaded:
         img = Image.open(uploaded).convert("RGB")
-        bgr = cv2.cvtColor(np.array(img), cv2.COLOR_RGB2BGR)
+        bgr = np.array(img)[:, :, ::-1]
 
         with st.spinner("Detecting face..."):
-            face_obj, crop = engine.best_face(bgr)
+            face_obj, _ = engine.best_face(bgr)
 
         if face_obj is None:
-            st.error("No face detected in the image.")
+            st.error("No face detected.")
         else:
             emb = engine.get_embedding_from_faceobj(face_obj)
+
             if emb is None:
-                st.error("Failed to get embedding for the detected face.")
+                st.error("Embedding failed.")
             else:
                 emb = normalize_emb(emb)
                 embeddings = db.load_all_embeddings()
+
                 if not embeddings:
-                    st.info("No people in the database. Add persons first.")
+                    st.info("No people in database.")
                 else:
                     best_name = "Unknown"
-                    best_score = -1.0
+                    best_score = -1
+
                     for name, saved in embeddings.items():
                         score = float(np.dot(emb, saved))
                         if score > best_score:
                             best_score = score
                             best_name = name
+
                     if best_score < thresh:
                         best_name = "Unknown"
 
-                    # draw bbox + label
-                    draw_bbox_and_label(bgr, face_obj, f"{best_name} {best_score:.2f}")
-                    st.image(cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB), use_column_width=True,
-                             caption=f"Prediction: {best_name} (score={best_score:.2f})")
+                    bgr = draw_bbox_and_label(bgr, face_obj, f"{best_name} {best_score:.2f}")
 
-# ---------- MODE: Live Webcam ----------
+                    st.image(
+                        bgr[:, :, ::-1],
+                        use_column_width=True,
+                        caption=f"{best_name} ({best_score:.2f})"
+                    )
+
+# ---------- MODE: Webcam ----------
 elif mode == "Live Webcam":
-    st.subheader("📷 Live Webcam (browser capture)")
-    st.info("Click 'Take snapshot' to capture from your webcam. This sends one image to the server for recognition.")
-    snapshot = st.camera_input("Point your camera at your face and click 'Take snapshot'")
+    st.subheader("📷 Webcam Snapshot")
+    snapshot = st.camera_input("Take a photo")
 
-    if snapshot is not None:
-        bytes_data = snapshot.getvalue()
-        img = Image.open(io.BytesIO(bytes_data)).convert("RGB")
-        bgr = cv2.cvtColor(np.array(img), cv2.COLOR_RGB2BGR)
+    if snapshot:
+        img = Image.open(io.BytesIO(snapshot.getvalue())).convert("RGB")
+        bgr = np.array(img)[:, :, ::-1]
 
-        with st.spinner("Detecting face..."):
-            face_obj, crop = engine.best_face(bgr)
+        face_obj, _ = engine.best_face(bgr)
 
         if face_obj is None:
-            st.error("No face detected. Try again with good lighting and a single face in frame.")
+            st.error("No face detected.")
         else:
-            emb = engine.get_embedding_from_faceobj(face_obj)
-            if emb is None:
-                st.error("Failed to get embedding.")
-            else:
-                emb = normalize_emb(emb)
-                embeddings = db.load_all_embeddings()
-                if not embeddings:
-                    st.info("No people in database yet.")
-                else:
-                    best_name = "Unknown"
-                    best_score = -1.0
-                    for name, saved in embeddings.items():
-                        score = float(np.dot(emb, saved))
-                        if score > best_score:
-                            best_score = score
-                            best_name = name
-                    if best_score < thresh:
-                        best_name = "Unknown"
+            emb = normalize_emb(engine.get_embedding_from_faceobj(face_obj))
+            embeddings = db.load_all_embeddings()
 
-                    draw_bbox_and_label(bgr, face_obj, f"{best_name} {best_score:.2f}")
-                    st.image(cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB), caption=f"{best_name} ({best_score:.2f})")
+            best_name = "Unknown"
+            best_score = -1
+
+            for name, saved in embeddings.items():
+                score = float(np.dot(emb, saved))
+                if score > best_score:
+                    best_score = score
+                    best_name = name
+
+            if best_score < thresh:
+                best_name = "Unknown"
+
+            bgr = draw_bbox_and_label(bgr, face_obj, f"{best_name} {best_score:.2f}")
+
+            st.image(bgr[:, :, ::-1], caption=f"{best_name} ({best_score:.2f})")
 
 # ---------- MODE: Add Person ----------
 elif mode == "Add Person":
-    st.subheader("➕ Register a new person")
-    st.markdown("Upload **exactly 3** images (front, left, right) OR use the webcam three times.")
-    name = st.text_input("Enter person's name (no spaces):")
-    col1, col2 = st.columns(2)
+    st.subheader("➕ Add Person")
+    name = st.text_input("Enter name (no spaces)")
 
-    with col1:
-        uploads = st.file_uploader("Upload 3 images (recommended)", type=["jpg", "png", "jpeg"],
-                                   accept_multiple_files=True, key="uploads")
-    with col2:
-        st.write("OR use webcam:")
-        snap1 = st.camera_input("Pose: Front", key="snap1")
-        snap2 = st.camera_input("Pose: Left", key="snap2")
-        snap3 = st.camera_input("Pose: Right", key="snap3")
+    uploads = st.file_uploader("Upload 3 images", accept_multiple_files=True)
 
     if st.button("Save Person"):
-        imgs = []
-        # prefer uploads if provided
-        if uploads and len(uploads) == 3:
-            for f in uploads:
-                im = Image.open(f).convert("RGB")
-                imgs.append(cv2.cvtColor(np.array(im), cv2.COLOR_RGB2BGR))
-        else:
-            # collect from snapshots if available
-            snaps = [snap1, snap2, snap3]
-            for s in snaps:
-                if s is not None:
-                    im = Image.open(io.BytesIO(s.getvalue())).convert("RGB")
-                    imgs.append(cv2.cvtColor(np.array(im), cv2.COLOR_RGB2BGR))
-
         if not name:
-            st.error("Please enter a name.")
-        elif len(imgs) != 3:
-            st.error("Please provide exactly 3 images (either upload 3 files or take 3 snapshots).")
+            st.error("Enter name")
+        elif not uploads or len(uploads) != 3:
+            st.error("Upload exactly 3 images")
         else:
             embs = []
-            failed = False
-            with st.spinner("Processing images and extracting embeddings..."):
-                for i, frame in enumerate(imgs):
-                    face_obj, crop = engine.best_face(frame)
-                    if face_obj is None:
-                        st.warning(f"No face detected in image #{i+1}. Operation aborted.")
-                        failed = True
-                        break
-                    emb = engine.get_embedding_from_faceobj(face_obj)
-                    if emb is None:
-                        st.warning(f"Failed to compute embedding for image #{i+1}.")
-                        failed = True
-                        break
-                    embs.append(normalize_emb(emb))
+            for f in uploads:
+                img = Image.open(f).convert("RGB")
+                bgr = np.array(img)[:, :, ::-1]
 
-            if not failed:
+                face_obj, _ = engine.best_face(bgr)
+                if face_obj is None:
+                    st.error("Face not detected in one image")
+                    break
+
+                emb = engine.get_embedding_from_faceobj(face_obj)
+                embs.append(normalize_emb(emb))
+
+            if len(embs) == 3:
                 db.add_person(name, embs)
-                # clear cache for db listing
-                try:
-                    # invalidate list cache if necessary
-                    st.cache_resource.clear()
-                except Exception:
-                    pass
-                st.success(f"Added person '{name}' with {len(embs)} embeddings.")
+                st.success(f"{name} added!")
 
-# ---------- MODE: Manage Dataset ----------
+# ---------- MODE: Manage ----------
 elif mode == "Manage Dataset":
-    st.subheader("🗂 Manage Dataset")
+    st.subheader("🗂 Dataset")
+
     people = db.list_people()
+
     if not people:
-        st.info("No people saved yet.")
+        st.info("No data")
     else:
-        cols = st.columns((3, 1))
-        with cols[0]:
-            for p in people:
-                with st.expander(p):
-                    # show saved embedding preview (just the name & np shape)
-                    emb = np.load(db.person_file(p))
-                    st.write("Embedding shape:", emb.shape)
-                    st.write("Name:", p)
-        with cols[1]:
-            to_delete = st.selectbox("Delete person", ["Select"] + people)
-            if to_delete != "Select":
-                if st.button("Delete selected"):
-                    db.delete_person(to_delete)
-                    # clear cache to refresh listing
-                    try:
-                        st.cache_resource.clear()
-                    except Exception:
-                        pass
-                    st.success(f"Deleted {to_delete}")
+        for p in people:
+            st.write(p)
 
-# Footer
+        delete = st.selectbox("Delete", ["Select"] + people)
+
+        if delete != "Select" and st.button("Delete"):
+            db.delete_person(delete)
+            st.success(f"{delete} deleted")
+
+# ---------- Footer ----------
 st.markdown("---")
-st.caption("Tip: first add persons using 'Add Person' then use 'Live Webcam' or 'Recognize (Image)' to test.")
-
-
+st.caption("Add people first, then test recognition.")
