@@ -7,7 +7,7 @@ class FaceEngine:
         # Use a lightweight CPU-friendly model and force CPU provider
         # FaceAnalysis will download model files on first run
         self.app = FaceAnalysis(name=model_name, providers=['CPUExecutionProvider'])
-        self.app.prepare(ctx_id=ctx_id)
+        self.app.prepare(ctx_id=0, det_size=(640, 640))
 
     def get_faces(self, bgr):
         # FaceAnalysis expects BGR images
