@@ -1,0 +1,17 @@
+/* ui.css - optional styling */
+body {
+    background-color: #071122;
+    color: #e6eef6;
+}
+h1, h2, h3 {
+    color: #61a3ff;
+}
+.stButton > button {
+    background-color: #2563eb;
+    color: white;
+    border-radius: 8px;
+    padding: 6px 12px;
+}
+.stCameraInput, .stFileUploader {
+    border-radius: 8px;
+}
