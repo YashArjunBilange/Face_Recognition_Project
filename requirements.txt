@@ -1,6 +1,5 @@
 streamlit==1.25.0
 numpy==1.23.5
 Pillow==9.5.0
-opencv-python==4.6.0.66
 insightface==0.7.3
 onnxruntime==1.13.1
