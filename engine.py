@@ -1,9 +1,18 @@
-Traceback:
-File "/home/adminuser/venv/lib/python3.10/site-packages/streamlit/runtime/scriptrunner/script_runner.py", line 552, in _run_script
-    exec(code, module.__dict__)
-File "/mount/src/face_recognition_project/app.py", line 7, in <module>
-    from engine import FaceEngine
-File "/mount/src/face_recognition_project/engine.py", line 3, in <module>
-    from insightface.app import FaceAnalysis
-File "/home/adminuser/venv/lib/python3.10/site-packages/insightface/__init__.py", line 10, in <module>
-    raise ImportError(
+import face_recognition
+import numpy as np
+
+class FaceEngine:
+
+    def get_faces(self, rgb_img):
+        boxes = face_recognition.face_locations(rgb_img)
+        encodings = face_recognition.face_encodings(rgb_img, boxes)
+        return boxes, encodings
+
+    def best_face(self, rgb_img):
+        boxes, encodings = self.get_faces(rgb_img)
+        if not boxes:
+            return None, None
+        return boxes[0], encodings[0]
+
+    def get_embedding_from_faceobj(self, encoding):
+        return np.array(encoding, dtype=np.float32)
